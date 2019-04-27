@@ -28,13 +28,10 @@ package  functions is
  -- Task who is responsible for add and remove elements from warehouse
  task type WarehouseBuffer is
     entry InsertToWarehouse ( newResult : in Integer);
+    entry RemoveFromWarehouse ;    
  end WarehouseBuffer;
  
- --Task for remove elements from warehouse
-  task type WareHouseRemover is
-     entry RemoveFromWarehouse ;    
-  end WareHouseRemover;
-  
+
   -- Task who is responsible for symulation client bought products from warehouse
   task type Client is  end Client;
 

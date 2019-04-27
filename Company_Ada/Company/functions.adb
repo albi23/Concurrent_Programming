@@ -10,7 +10,6 @@ package body functions is
   actualSizeOfWarehouse : Integer := 0;
   taskBuffer : TasksListBuffer;
   listOfWarehouseBuffer : WarehouseBuffer;
-  listOfWarehouseRemover : WareHouseRemover;
   clientOne : Client;
 
 -- *********************************
@@ -26,37 +25,27 @@ package body functions is
  end CalculateTask;
 
 -- **************************************
--- Task control add item on warehouselist
+-- Task control add/remove item on/from warehouselist
 -- **************************************
   task body WarehouseBuffer is
   begin
     loop
-        accept InsertToWarehouse ( newResult : in Integer) do
-          listOfResultsInWarehouse(actualSizeOfWarehouse) := newResult;
-          actualSizeOfWarehouse := actualSizeOfWarehouse + 1;
-        end InsertToWarehouse;
+    select 
+        when actualSizeOfWarehouse < maxSizeOfWarehouse =>
+            accept InsertToWarehouse ( newResult : in Integer) do
+            listOfResultsInWarehouse(actualSizeOfWarehouse) := newResult;
+            actualSizeOfWarehouse := actualSizeOfWarehouse + 1;
+            end InsertToWarehouse;
+    or
+        when actualSizeOfWarehouse > 0 =>
+            accept RemoveFromWarehouse  do
+                   actualSizeOfWarehouse := actualSizeOfWarehouse - 1;
+            end RemoveFromWarehouse;
+    end select;                
     end loop;  
   end WarehouseBuffer;
   
--- ****************************************************************
--- Task control remove item from warehouse, when client bought sth.
--- ****************************************************************
-  task body WareHouseRemover is
-  begin
-    loop
-      select
-        accept RemoveFromWarehouse  do
-          if actualSizeOfWarehouse > 0 then
-            actualSizeOfWarehouse := actualSizeOfWarehouse - 1;
-             if(deceptive = true) then 
-               put_line("[Client] bought : "&Integer'image(listOfResultsInWarehouse(actualSizeOfWarehouse)));
-             end if;
-          end if;       
-        end RemoveFromWarehouse;
-      end select;
-    end loop;  
-  end WareHouseRemover;
-  
+
 -- ****************************************************************************
 -- Task control add/remove item on task list and put results to warehouse list
 -- ****************************************************************************
@@ -64,18 +53,16 @@ package body functions is
   begin
     loop
       select
-        accept  Insert ( newTask : in Tasks) do
-            listOfTask(actualSizeOfTasks) := newTask;
-            actualSizeOfTasks := actualSizeOfTasks +1;
-        end Insert;    
-      or 
-        accept  Remove (  idWorker : in Integer) do
-            actualSizeOfTasks := actualSizeOfTasks -1;
-            if(deceptive = true) then 
-               put_line("[Worker" &Integer'image(idWorker) & "] Operation to do : " &Integer'image(listOfTask(actualSizeOfTasks).firstArg) & Character'image(listOfTask(actualSizeOfTasks).operation) &Integer'image(listOfTask(actualSizeOfTasks).secondArg));
-            end if;
-            listOfWarehouseBuffer.InsertToWarehouse(CalculateTask(listOfTask(actualSizeOfTasks)));
-        end Remove;   
+        when actualSizeOfTasks < maxSizeOfTasks =>
+            accept  Insert ( newTask : in Tasks) do
+                listOfTask(actualSizeOfTasks) := newTask;
+                actualSizeOfTasks := actualSizeOfTasks +1;
+            end Insert;    
+      or
+        when  actualSizeOfTasks > 0 =>
+            accept  Remove (  idWorker : in Integer) do
+                actualSizeOfTasks := actualSizeOfTasks -1;
+            end Remove;   
       end select;
     end loop;   
   end TasksListBuffer;
@@ -87,7 +74,10 @@ package body functions is
   task body Client is begin
     delay fastOfEmployees*2.0;
     loop
-        listOfWarehouseRemover.RemoveFromWarehouse;
+        listOfWarehouseBuffer.RemoveFromWarehouse;
+        if(deceptive = true) then 
+            put_line("[Client] bought : "&Integer'image(listOfResultsInWarehouse(actualSizeOfWarehouse)));
+        end if;
         delay 1.0*fastOfClient;
     end loop;
   end Client;
@@ -123,6 +113,11 @@ package body functions is
     loop        
       delay 1.0*fastOfEmployees;
       taskBuffer.Remove(nr);
+      if(deceptive = true) then 
+         put_line("[Worker" &Integer'image(nr) & "] Operation to do : " &Integer'image(listOfTask(actualSizeOfTasks).firstArg) & Character'image(listOfTask(actualSizeOfTasks).operation) &Integer'image(listOfTask(actualSizeOfTasks).secondArg));
+      end if;
+      listOfWarehouseBuffer.InsertToWarehouse(CalculateTask(listOfTask(actualSizeOfTasks)));
+
     end loop;     
   end Workertype;
     
