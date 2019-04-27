@@ -30,11 +30,17 @@ type writeWarehouse struct {
 	doneTask string
 }
 
-var listOfTasks = make([]task, config.TaskSize)
+type readWarehouse struct {
+	request  bool
+	response chan string
+}
+
+var listOfTasks = make([]task, 0)
 var writeTaskChan = make(chan *writeTask)
 var readTaskChan = make(chan *readTask)
 var warehouseList = make([]string, 0)
 var writeWarehouseChan = make(chan *writeWarehouse)
+var readWarehouseChan = make(chan *readWarehouse)
 var deceptive = false
 
 func bossTask() {
@@ -72,19 +78,15 @@ func worker(idWorker int) {
 		case "+":
 			{
 				newElement := &writeWarehouse{result: make(chan bool), doneTask: strconv.Itoa(task.firstArg + task.secondArg)}
-				fmt.Println("Jestem tu 1")
-
 				writeWarehouseChan <- newElement
 				<-newElement.result
-				fmt.Println("Jestem tu 3")
-
-				fmt.Println("Jestem tu4")
 				time.Sleep(time.Duration(config.TimeReciveTaskForWorker) * time.Second)
 			}
 		case "-":
 			{
 				newElement := &writeWarehouse{result: make(chan bool), doneTask: strconv.Itoa(task.firstArg - task.secondArg)}
 				writeWarehouseChan <- newElement
+				<-newElement.result
 				time.Sleep(time.Duration(config.TimeReciveTaskForWorker) * time.Second)
 			}
 
@@ -92,6 +94,7 @@ func worker(idWorker int) {
 			{
 				newElement := &writeWarehouse{result: make(chan bool), doneTask: strconv.Itoa(task.firstArg * task.secondArg)}
 				writeWarehouseChan <- newElement
+				<-newElement.result
 				time.Sleep(time.Duration(config.TimeReciveTaskForWorker) * time.Second)
 			}
 
@@ -102,10 +105,12 @@ func worker(idWorker int) {
 func client() {
 
 	for {
-		productToBuy := &writeWarehouse{result: make(chan bool), doneTask: "aa"}
-		writeWarehouseChan <- productToBuy
+		productToBuy := &readWarehouse{request: true, response: make(chan string)}
+		readWarehouseChan <- productToBuy
 		if deceptive {
-			fmt.Println("Client bought product: ", <-productToBuy.result)
+			fmt.Println("Client bought product: ", <-productToBuy.response)
+		} else {
+			<-productToBuy.response
 		}
 		time.Sleep(time.Duration(config.TimeForBuy) * time.Second)
 
@@ -113,7 +118,7 @@ func client() {
 }
 
 func checkStatusOfWarehouse() {
-	fmt.Println(warehouseList)
+	fmt.Println("writeWarehouse: ", warehouseList)
 }
 
 func checkTaskToDo() {
@@ -129,7 +134,7 @@ func taskController() {
 			listOfTasks = append(listOfTasks, newtask.task)
 			newtask.resp <- true
 
-		case takenTask := <-taskGetGuard(len(listOfTasks) > 0, readTaskChan):
+		case takenTask := <-taskGetGuard(len(listOfTasks) >= 1, readTaskChan):
 			takenTask.resp <- listOfTasks[0]
 			listOfTasks = listOfTasks[1:]
 		}
@@ -141,24 +146,25 @@ func warehouseController() {
 
 	for {
 		select {
-		case newElement := <-warehouseGuard(len(warehouseList) < config.WarehouseSize, writeWarehouseChan):
+		case newElement := <-warehouseAddGuard(len(warehouseList) < config.WarehouseSize, writeWarehouseChan):
 			warehouseList = append(warehouseList, newElement.doneTask)
 			newElement.result <- true
-			fmt.Println("warehouse controler jestem tu")
 
-			//case takeElement := <-warehouseGuard(len(warehouseList) >= 0 , writeWarehouseChan) :
-			//	takeElement.result <- warehouseList[0]
-			//	warehouseList = warehouseList[1:]
-
+		case takeElement := <-warehouseGetGuard(len(warehouseList) >= 1, readWarehouseChan):
+			takeElement.response <- warehouseList[0]
+			warehouseList = warehouseList[1:]
 		}
 	}
 }
 
-func warehouseGuard(b bool, c chan *writeWarehouse) chan *writeWarehouse {
-	fmt.Println("writeWarehouse guard, len warehouse = ", len(warehouseList), "   elements: ", warehouseList)
+func warehouseAddGuard(b bool, c chan *writeWarehouse) chan *writeWarehouse {
 	if !b {
-		fmt.Println("Fałsz ")
-
+		return nil
+	}
+	return c
+}
+func warehouseGetGuard(b bool, c chan *readWarehouse) chan *readWarehouse {
+	if !b {
 		return nil
 	}
 	return c
@@ -193,7 +199,7 @@ func main() {
 	for i := 0; i < config.NumberOfWorkers; i++ {
 		go worker(i + 1)
 	}
-	//go client()
+	go client()
 
 	if chosedMode == "D" {
 		deceptive = true
