@@ -42,12 +42,12 @@ type Machine struct {
 	busy         bool
 }
 
-type Worker struct {
+type WorkerInfo struct {
 	patient  bool
 	doneTask int
 }
 
-var workersStats = make([]Worker, config.NumberOfWorkers)
+var workersStats = make([]WorkerInfo, config.NumberOfWorkers)
 var listOfTasks = make([]task, 0)
 var writeTaskChan = make(chan *writeTask)
 var readTaskChan = make(chan *readTask)
@@ -57,6 +57,9 @@ var readWarehouseChan = make(chan *readWarehouse)
 var MachineChan = make([]Machine, config.NumberOfAddingMachines+config.NumberOfMultiplyMachines)
 var deceptive = false
 
+/**
+Bos adding task to listOftasks
+*/
 func bossTask() {
 	var operations = []string{"+", "*"}
 	for {
@@ -68,8 +71,8 @@ func bossTask() {
 		toDoTask := &writeTask{
 			task: task{firstArg, secondArg, operation, ""},
 			resp: make(chan bool)}
-		writeTaskChan <- toDoTask
-		response := <-toDoTask.resp
+		writeTaskChan <- toDoTask   //sending new task
+		response := <-toDoTask.resp // waiting for confirmation that new task was added
 		if deceptive && response {
 			fmt.Println("\u001b[32m [ Boss ] add new task: ", firstArg, operation, secondArg, " \u001B[0m")
 		}
@@ -81,12 +84,12 @@ func bossTask() {
 func worker(idWorker int, patient bool) {
 
 	for {
-		patient := patient
+		patient := patient // we want wait in queue or not
 		takenTask := &readTask{request: true, resp: make(chan task)}
-		readTaskChan <- takenTask
+		readTaskChan <- takenTask // take task from list of tasks
 		task := <-takenTask.resp
 		if deceptive && task.firstArg != 0 {
-			fmt.Println("\u001b[34m [Worker ", idWorker, "] Operation to do : ", task.firstArg, task.operation, task.secondArg, " \u001B[0m")
+			fmt.Println("\u001b[34m [WorkerInfo ", idWorker, "] Operation to do : ", task.firstArg, task.operation, task.secondArg, " \u001B[0m")
 		}
 
 		s1 := rand.NewSource(time.Now().UnixNano())
@@ -95,44 +98,36 @@ func worker(idWorker int, patient bool) {
 		switch task.operation {
 		case "+":
 			{
-				var machine = r1.Intn(config.NumberOfAddingMachines)
+				var machine = r1.Intn(config.NumberOfAddingMachines) // choose one machine
 				if patient {
-					//fmt.Println("[Worker ",idWorker,"] is patient = ",patient," and want to do MachineChan[",machine,"]")
-					MachineChan[machine].taskToDo <- &task
+					MachineChan[machine].taskToDo <- &task //  send task to machine
 				} else {
 					for {
 						machine = r1.Intn(config.NumberOfAddingMachines)
-						//fmt.Println("Worker ",idWorker,"  try choose ",machine)
-						if MachineChan[machine].busy == false {
-							//fmt.Println("[Worker ",idWorker,"] is patient = ",patient," and want to do MachineChan[",machine,"]")
+						if MachineChan[machine].busy == false { // send to machine only if it is not busy
 							MachineChan[machine].taskToDo <- &task
 							break
-						} else {
+						} else { // try to find other machine and wait 100 ms
 							time.Sleep(time.Duration(config.TimeForWaitingImpatient) * time.Microsecond)
 						}
 					}
 				}
-				//fmt.Println("Waiting for response worker := ",idWorker)
-				resultTask := <-MachineChan[machine].taskResponse
+				resultTask := <-MachineChan[machine].taskResponse // wait for response from machine
 				newElement := &writeWarehouse{result: make(chan bool), doneTask: resultTask.result}
-				writeWarehouseChan <- newElement
+				writeWarehouseChan <- newElement // send done task to warehouse
 				<-newElement.result
-				//fmt.Println("Done Worker ",idWorker,"  ", resultTask.firstArg," + ",resultTask.secondArg)
-				workersStats[idWorker-1].doneTask++
+				workersStats[idWorker-1].doneTask++ // increase number of done task
 				time.Sleep(time.Duration(config.TimeReceiveTaskForWorker) * time.Second)
 			}
 		case "*":
 			{
 				var machine = r1.Intn(config.NumberOfMultiplyMachines) + config.NumberOfAddingMachines
 				if patient {
-					//fmt.Println("[Worker ",idWorker,"] is patient = ",patient," and want to do MachineChan[",machine,"]")
 					MachineChan[machine].taskToDo <- &task
 				} else {
 					for {
 						machine = r1.Intn(config.NumberOfMultiplyMachines) + config.NumberOfAddingMachines
-						//fmt.Println("Worker ",idWorker,"  try choose ",machine)
 						if MachineChan[machine].busy == false {
-							//fmt.Println("[Worker ",idWorker,"] is patient = ",patient," and want to do MachineChan[",machine,"]")
 							MachineChan[machine].taskToDo <- &task
 							break
 						} else {
@@ -156,14 +151,14 @@ func addingMachine(idMachine int) {
 	for {
 
 		for toDo := range MachineChan[idMachine-1].taskToDo {
-			MachineChan[idMachine-1].busy = true
+			MachineChan[idMachine-1].busy = true // we have task so we are busy
 			time.Sleep(time.Duration(config.TimeAddingMachine) * time.Second)
 			if deceptive {
 				fmt.Println("\u001b[35m [Machine ", idMachine, "] is doing ", toDo.firstArg, " + ", toDo.secondArg, " \u001B[0m")
 			}
 			result := strconv.Itoa(toDo.firstArg + toDo.secondArg)
-			MachineChan[idMachine-1].taskResponse <- task{toDo.firstArg, toDo.secondArg, toDo.operation, result}
-			MachineChan[idMachine-1].busy = false
+			MachineChan[idMachine-1].taskResponse <- task{toDo.firstArg, toDo.secondArg, toDo.operation, result} // return answer
+			MachineChan[idMachine-1].busy = false                                                                // we are no longer busy
 
 		}
 
@@ -204,7 +199,7 @@ func client() {
 func checkStatsOfWorkers() {
 
 	for i := 0; i < len(workersStats); i++ {
-		fmt.Println("\u001b[36m [Worker", i+1, "]  patient =", workersStats[i].patient, " done tasks : ", workersStats[i].doneTask, " \u001B[0m")
+		fmt.Println("\u001b[36m [WorkerInfo", i+1, "]  patient =", workersStats[i].patient, " done tasks : ", workersStats[i].doneTask, " \u001B[0m")
 	}
 }
 func checkStatusOfWarehouse() {
@@ -274,8 +269,8 @@ func main() {
 
 	fmt.Println("Choose: deceptive mode/quiet mode  D/Q: ")
 
-	var chosedMode string
-	fmt.Scanln(&chosedMode)
+	var chasedMode string
+	fmt.Scanln(&chasedMode)
 
 	go taskController()
 	go warehouseController()
@@ -305,9 +300,9 @@ func main() {
 	}
 	go client()
 
-	if chosedMode == "D" {
+	if chasedMode == "D" {
 		deceptive = true
-	} else if chosedMode == "Q" {
+	} else if chasedMode == "Q" {
 
 		for {
 			fmt.Println("Choose ")
@@ -316,17 +311,17 @@ func main() {
 			fmt.Println("      3: to check workers stat  ")
 			fmt.Println("      4: to quit   ")
 
-			fmt.Scanln(&chosedMode)
-			if chosedMode == "1" {
+			fmt.Scanln(&chasedMode)
+			if chasedMode == "1" {
 				checkStatusOfWarehouse()
 			}
-			if chosedMode == "2" {
+			if chasedMode == "2" {
 				checkTaskToDo()
 			}
-			if chosedMode == "3" {
+			if chasedMode == "3" {
 				checkStatsOfWorkers()
 			}
-			if chosedMode == "4" {
+			if chasedMode == "4" {
 				os.Exit(0)
 			}
 		}
