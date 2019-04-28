@@ -67,7 +67,7 @@ func bossTask() {
 		r1 := rand.New(s1)
 		firstArg := r1.Intn(10000)
 		secondArg := r1.Intn(10000)
-		operation := operations[r1.Intn(1)]
+		operation := operations[r1.Intn(2)]
 		toDoTask := &writeTask{
 			task: task{firstArg, secondArg, operation, ""},
 			resp: make(chan bool)}
@@ -284,7 +284,7 @@ func main() {
 	for i := 1; i <= config.NumberOfAddingMachines; i++ {
 		go addingMachine(i)
 	}
-	for i := 1; i <= config.NumberOfMultiplyMachines; i++ {
+	for i := config.NumberOfAddingMachines + 1; i <= config.NumberOfAddingMachines+config.NumberOfMultiplyMachines; i++ {
 		go multiplyMachine(i)
 	}
 
