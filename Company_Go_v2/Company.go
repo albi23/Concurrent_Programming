@@ -71,11 +71,12 @@ func bossTask() {
 		toDoTask := &writeTask{
 			task: task{firstArg, secondArg, operation, ""},
 			resp: make(chan bool)}
-		writeTaskChan <- toDoTask   //sending new task
-		response := <-toDoTask.resp // waiting for confirmation that new task was added
-		if deceptive && response {
+		writeTaskChan <- toDoTask //sending new task
+		if deceptive {
 			fmt.Println("\u001b[32m [ Boss ] add new task: ", firstArg, operation, secondArg, " \u001B[0m")
 		}
+		<-toDoTask.resp // waiting for confirmation that new task was added
+
 		time.Sleep(time.Duration(config.TimeForNewTask) * 400 * time.Millisecond)
 
 	}
@@ -89,7 +90,7 @@ func worker(idWorker int, patient bool) {
 		readTaskChan <- takenTask // take task from list of tasks
 		task := <-takenTask.resp
 		if deceptive && task.firstArg != 0 {
-			fmt.Println("\u001b[34m [WorkerInfo ", idWorker, "] Operation to do : ", task.firstArg, task.operation, task.secondArg, " \u001B[0m")
+			fmt.Println("\u001b[34m [Worker ", idWorker, "] Operation to do : ", task.firstArg, task.operation, task.secondArg, " \u001B[0m")
 		}
 
 		s1 := rand.NewSource(time.Now().UnixNano())
@@ -108,7 +109,7 @@ func worker(idWorker int, patient bool) {
 							MachineChan[machine].taskToDo <- &task
 							break
 						} else { // try to find other machine and wait 100 ms
-							time.Sleep(time.Duration(config.TimeForWaitingImpatient) * time.Microsecond)
+							time.Sleep(time.Duration(config.TimeForWaitingImpatient) * time.Millisecond)
 						}
 					}
 				}
@@ -288,9 +289,9 @@ func main() {
 		go multiplyMachine(i)
 	}
 
+	s1 := rand.NewSource(time.Now().UnixNano())
+	r1 := rand.New(s1)
 	for i := 0; i < config.NumberOfWorkers; i++ {
-		s1 := rand.NewSource(time.Now().UnixNano())
-		r1 := rand.New(s1)
 		var patient = true
 		if r1.Float32() <= 0.5 {
 			patient = false
